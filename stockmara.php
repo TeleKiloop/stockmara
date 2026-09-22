@@ -21,7 +21,7 @@ class StockMara extends Module
 
         parent::__construct();
 
-        $this->displayName = $this->l('Stock Webhook Intranet');
+        $this->displayName = $this->l('StockMara');
         $this->description = $this->l('Gestão e registo de envios de stock para a Intranet via Webhook (PS 1.7.6.2).');
         
         $this->ps_versions_compliancy = array('min' => '1.7.6.0', 'max' => '1.7.6.9');
