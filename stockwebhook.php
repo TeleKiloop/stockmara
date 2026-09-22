@@ -176,55 +176,6 @@ class StockWebhook extends Module
         return $helper->generateList($logs ? $logs : array(), $fields_list);
     }
 
-    public function hookActionOrderStatusUpdate($params)
-    {
-        if (!Configuration::get('STOCK_WEBHOOK_ACTIVE')) {
-            return;
-        }
-
-        if (!isset($params['id_order']) || !isset($params['newOrderStatus'])) {
-            return;
-        }
-
-        $order = new Order((int)$params['id_order']);
-        $new_status = $params['newOrderStatus'];
-        
-        if (!Validate::isLoadedObject($order) || !Validate::isLoadedObject($new_status)) {
-            return;
-        }
-
-        $products = $order->getProducts();
-        $id_lang = (int)($this->context->language ? $this->context->language->id : Configuration::get('PS_LANG_DEFAULT'));
-
-        $items = array();
-        foreach ($products as $prod) {
-            $items[] = array(
-                'id_product' => (int)$prod['product_id'],
-                'id_product_attribute' => (int)$prod['product_attribute_id'],
-                'reference' => $prod['product_reference'],
-                'quantity' => (int)$prod['product_quantity']
-            );
-        }
-
-        $status_name = is_array($new_status->name) ? ($new_status->name[$id_lang] ?? reset($new_status->name)) : $new_status->name;
-
-        $payload = array(
-            'event' => 'order_status_update',
-            'shop_id' => (int)$this->context->shop->id,
-            'order_id' => (int)$order->id,
-            'status_id' => (int)$new_status->id,
-            'status_name' => $status_name,
-            'products' => $items,
-            'timestamp' => date('Y-m-d H:i:s')
-        );
-
-        $response = $this->sendWebhook($payload);
-
-        foreach ($items as $item) {
-            $this->logEvent('order_status_update', $item['reference'], $item['quantity'], (int)$new_status->id, $response['code'], $response['body']);
-        }
-    }
-
     public function hookActionUpdateQuantity($params)
     {
         if (!Configuration::get('STOCK_WEBHOOK_ACTIVE')) {
@@ -264,7 +215,7 @@ class StockWebhook extends Module
             'timestamp' => date('Y-m-d H:i:s')
         );
 
-        $response = $this->sendWebhook($payload);
+        //$response = $this->sendWebhook($payload);
 
         $this->logEvent('stock_quantity_update', $reference, $quantity, null, $response['code'], $response['body']);
     }
