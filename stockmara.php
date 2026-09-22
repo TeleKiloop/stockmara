@@ -8,11 +8,11 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
-class StockWebhook extends Module
+class StockMara extends Module
 {
     public function __construct()
     {
-        $this->name = 'stockwebhook';
+        $this->name = 'stockmara';
         $this->tab = 'administration';
         $this->version = '1.2.2';
         $this->author = 'Winespiritus';
@@ -74,7 +74,7 @@ class StockWebhook extends Module
         $output = '';
 
         // Corrigido: captura de dados quando o formulário é submetido
-        if (Tools::isSubmit('submitStockWebhookConfig')) {
+        if (Tools::isSubmit('submitStockMaraConfig')) {
             $active = (int)Tools::getValue('STOCK_WEBHOOK_ACTIVE');
             $api_url = trim(Tools::getValue('STOCK_WEBHOOK_API_URL'));
             $secret = trim(Tools::getValue('STOCK_WEBHOOK_SECRET'));
@@ -127,7 +127,7 @@ class StockWebhook extends Module
                 ),
                 'submit' => array(
                     'title' => $this->l('Guardar'),
-                    'name' => 'submitStockWebhookConfig', // CORRIGIDO: Nome do botão de submissão
+                    'name' => 'submitStockMaraConfig', // CORRIGIDO: Nome do botão de submissão
                     'class' => 'btn btn-default pull-right'
                 )
             )
@@ -139,7 +139,7 @@ class StockWebhook extends Module
         $helper->token = Tools::getAdminTokenLite('AdminModules');
         $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
         $helper->default_form_language = (int)Configuration::get('PS_LANG_DEFAULT');
-        $helper->submit_action = 'submitStockWebhookConfig'; // CORRIGIDO: Ação explícita do formulário
+        $helper->submit_action = 'submitStockMaraConfig'; // CORRIGIDO: Ação explícita do formulário
 
         $helper->fields_value['STOCK_WEBHOOK_ACTIVE'] = Configuration::get('STOCK_WEBHOOK_ACTIVE');
         $helper->fields_value['STOCK_WEBHOOK_API_URL'] = Configuration::get('STOCK_WEBHOOK_API_URL');

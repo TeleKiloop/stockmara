@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <module>
-    <name>stockwebhook</name>
+    <name>stockmara</name>
     <displayName><![CDATA[Stock Webhook Intranet]]></displayName>
     <version><![CDATA[1.2.0]]></version>
     <description><![CDATA[Gere o envio de eventos de stock e encomendas para a Intranet com histórico de disparos e controlo On/Off.]]></description>
