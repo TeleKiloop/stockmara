@@ -4,6 +4,12 @@
  * Compatível especificamente com PrestaShop 1.7.6.2
  */
 
+
+
+/**
+ * O plugin realmente está a detar a alteração de stocks, porém a tabela que está a ser exibida para os administradores está um pouco confusa seria melhor trocar reference por nome do produto
+ * e adicionar o id da loja
+ */
 if (!defined('_PS_VERSION_')) {
     exit;
 }
