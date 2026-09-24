@@ -7,8 +7,13 @@
 
 
 /**
- * O plugin realmente está a detar a alteração de stocks, porém a tabela que está a ser exibida para os administradores está um pouco confusa seria melhor trocar reference por nome do produto
- * e adicionar o id da loja
+ * 
+ * Falta na API retornar o nome do produto para facilitar o registo no log. Atualmente, o nome do produto não é retornado na resposta da API.
+ * 
+ * Criar sistema que ao clicar no ID do produto no log, abra a página de edição do produto no backoffice do PrestaShop.
+ * 
+ * 
+ * 
  */
 if (!defined('_PS_VERSION_')) {
     exit;
@@ -40,7 +45,6 @@ class StockMara extends Module
             Configuration::updateValue('STOCK_WEBHOOK_ACTIVE', 1) &&
             Configuration::updateValue('STOCK_WEBHOOK_API_URL', 'https://intranet.tuaempresa.com/api/stock-webhook') &&
             Configuration::updateValue('STOCK_WEBHOOK_SECRET', Tools::passwdGen(32)) &&
-            $this->registerHook('actionOrderStatusUpdate') &&
             $this->registerHook('actionUpdateQuantity');
     }
 
@@ -58,7 +62,9 @@ class StockMara extends Module
         $sql = "CREATE TABLE IF NOT EXISTS `" . _DB_PREFIX_ . "stock_webhook_log` (
             `id_log` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
             `event_type` VARCHAR(50) NOT NULL,
-            `reference` VARCHAR(64) DEFAULT NULL,
+            `id_product` VARCHAR(50) DEFAULT NULL,
+            `name_shop` VARCHAR(50) DEFAULT NULL,
+            `name_product` VARCHAR(50) DEFAULT NULL,
             `quantity` INT(11) DEFAULT NULL,
             `status_id` INT(11) DEFAULT NULL,
             `http_code` INT(5) DEFAULT NULL,
@@ -92,7 +98,7 @@ class StockMara extends Module
                 Configuration::updateValue('STOCK_WEBHOOK_API_URL', $api_url);
                 Configuration::updateValue('STOCK_WEBHOOK_SECRET', $secret);
 
-                $output .= $this->displayConfirmation($this->l('Configurações guardadas com sucesso!'));
+                $output .= $this->displayConfirmation($this->l('✅ Alterações guardadas com sucesso!'));
             }
         }
 
@@ -104,13 +110,13 @@ class StockMara extends Module
         $fields_form = array(
             'form' => array(
                 'legend' => array(
-                    'title' => $this->l('Configurações do Webhook'),
+                    'title' => $this->l('Configurações básicas do módulo'),
                     'icon' => 'icon-cogs'
                 ),
                 'input' => array(
                     array(
                         'type' => 'switch',
-                        'label' => $this->l('Ativar Webhook'),
+                        'label' => $this->l('O modulo está ativo?'),
                         'name' => 'STOCK_WEBHOOK_ACTIVE',
                         'is_bool' => true,
                         'values' => array(
@@ -120,7 +126,7 @@ class StockMara extends Module
                     ),
                     array(
                         'type' => 'text',
-                        'label' => $this->l('URL da API (Intranet)'),
+                        'label' => $this->l('URL da API'),
                         'name' => 'STOCK_WEBHOOK_API_URL',
                         'required' => true,
                     ),
@@ -157,9 +163,12 @@ class StockMara extends Module
     public function renderLogList()
     {
         $fields_list = array(
+            
             'id_log' => array('title' => $this->l('ID'), 'align' => 'center', 'class' => 'fixed-width-xs'),
             'event_type' => array('title' => $this->l('Evento'), 'type' => 'text'),
-            'reference' => array('title' => $this->l('Referência / SKU'), 'type' => 'text'),
+            'id_product' => array('title' => $this->l('ID Produto'), 'type' => 'int', 'align' => 'center'),
+            'name_shop' => array('title' => $this->l('Loja'), 'type' => 'text'),
+            'name_product' => array('title' => $this->l('Nome do Produto'), 'type' => 'text'),
             'quantity' => array('title' => $this->l('Qtd Enviada'), 'align' => 'center'),
             'http_code' => array('title' => $this->l('Status HTTP'), 'align' => 'center'),
             'date_add' => array('title' => $this->l('Data / Hora'), 'type' => 'datetime'),
@@ -196,34 +205,20 @@ class StockMara extends Module
         $id_product_attribute = isset($params['id_product_attribute']) ? (int)$params['id_product_attribute'] : 0;
         $quantity = (int)$params['quantity'];
 
-        $reference = '';
-        if ($id_product_attribute > 0) {
-            $combination = new Combination($id_product_attribute);
-            if (Validate::isLoadedObject($combination)) {
-                $reference = $combination->reference;
-            }
-        }
-        
-        if (empty($reference)) {
-            $product = new Product($id_product);
-            if (Validate::isLoadedObject($product)) {
-                $reference = $product->reference;
-            }
-        }
+        $id_product_final = $id_product ? $id_product : $id_product_attribute;
 
         $payload = array(
             'event' => 'stock_quantity_update',
             'shop_id' => (int)$this->context->shop->id,
-            'id_product' => $id_product,
+            'id_product' => $id_product_final,
             'id_product_attribute' => $id_product_attribute,
-            'reference' => $reference,
             'new_total_quantity' => $quantity,
             'timestamp' => date('Y-m-d H:i:s')
         );
 
         //$response = $this->sendWebhook($payload);
 
-        $this->logEvent('stock_quantity_update', $reference, $quantity, null, $response['code'], $response['body']);
+        $this->logEvent('stock_quantity_update', $id_product_final, $this->context->shop->name, $response['name_product'], $quantity, null, $response['code'], $response['body']);
     }
 
     private function sendWebhook($data)
@@ -251,13 +246,15 @@ class StockMara extends Module
         return array('code' => $http_code, 'body' => $result ? $result : '');
     }
 
-    private function logEvent($event, $reference, $quantity, $status_id, $http_code, $response)
+    private function logEvent($event, $id_product, $name_shop, $name_product, $quantity, $status_id, $http_code, $response)
     {
         $truncated_response = Tools::substr($response, 0, 250);
 
         $data = array(
             'event_type' => pSQL($event),
-            'reference' => pSQL($reference),
+            'id_product' => (int)$id_product,
+            'name_shop' => pSQL($name_shop),
+            'name_product' => pSQL($name_product),
             'quantity' => (int)$quantity,
             'http_code' => (int)$http_code,
             'response' => pSQL($truncated_response),
