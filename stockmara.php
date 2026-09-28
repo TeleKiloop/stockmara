@@ -163,14 +163,12 @@ class StockMara extends Module
     public function renderLogList()
     {
         $fields_list = array(
-            
             'id_log' => array('title' => $this->l('ID'), 'align' => 'center', 'class' => 'fixed-width-xs'),
             'event_type' => array('title' => $this->l('Evento'), 'type' => 'text'),
             'id_product' => array('title' => $this->l('ID Produto'), 'type' => 'int', 'align' => 'center'),
             'name_shop' => array('title' => $this->l('Loja'), 'type' => 'text'),
             'name_product' => array('title' => $this->l('Nome do Produto'), 'type' => 'text'),
             'quantity' => array('title' => $this->l('Qtd Enviada'), 'align' => 'center'),
-            'http_code' => array('title' => $this->l('Status HTTP'), 'align' => 'center'),
             'date_add' => array('title' => $this->l('Data / Hora'), 'type' => 'datetime'),
         );
 
@@ -180,7 +178,7 @@ class StockMara extends Module
         $helper->identifier = 'id_log';
         $helper->actions = array();
         $helper->show_toolbar = false;
-        $helper->title = $this->l('Histórico de Envio de Stocks (Intranet)');
+        $helper->title = $this->l('Histórico de Comunicação de Stocks (últimos 100 registos)');
         $helper->table = 'stock_webhook_log';
         $helper->token = Tools::getAdminTokenLite('AdminModules');
         $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
@@ -201,24 +199,38 @@ class StockMara extends Module
             return;
         }
 
+        // 
         $id_product = (int)$params['id_product'];
         $id_product_attribute = isset($params['id_product_attribute']) ? (int)$params['id_product_attribute'] : 0;
         $quantity = (int)$params['quantity'];
 
         $id_product_final = $id_product ? $id_product : $id_product_attribute;
 
-        $payload = array(
-            'event' => 'stock_quantity_update',
-            'shop_id' => (int)$this->context->shop->id,
-            'id_product' => $id_product_final,
-            'id_product_attribute' => $id_product_attribute,
-            'new_total_quantity' => $quantity,
-            'timestamp' => date('Y-m-d H:i:s')
-        );
+        $id_lang = (int) Context::getContext()->language->id;
+        $id_shop = (int) Context::getContext()->shop->id;
+        $name_shop = Context::getContext()->shop->name;
 
+        $product_name = "";
+        if ($id_product) {
+            $product = new Product($id_product, false, $id_lang, $id_shop);
+            if (Validate::isLoadedObject($product)) {
+                $product_name = $product->name;
+            }
+        } elseif ($id_product_attribute) {
+            $id_product = (int) Product::getProductIdByAttribute($id_product_attribute);
+
+            if ($id_product > 0) {
+                // 2. Instanciar o produto para obter o nome
+                $product = new Product($id_product, false, $id_lang);
+                
+                if (Validate::isLoadedObject($product)) {
+                    $product_name = $product->name;
+                }
+            }
+        }
        
 
-        $this->logEvent('stock_quantity_update', $id_product_final, $this->context->shop->name, $response['name_product'], $quantity, null, $response['code'], $response['body']);
+        $this->logEvent('stock_quantity_update', $id_product_final, $name_shop, $product_name, $quantity);
     }
 
     private function sendWebhook($data)
@@ -246,9 +258,8 @@ class StockMara extends Module
         return array('code' => $http_code, 'body' => $result ? $result : '');
     }
 
-    private function logEvent($event, $id_product, $name_shop, $name_product, $quantity, $status_id, $http_code, $response)
+    private function logEvent($event, $id_product, $name_shop, $name_product, $quantity)
     {
-        $truncated_response = Tools::substr($response, 0, 250);
 
         $data = array(
             'event_type' => pSQL($event),
@@ -256,14 +267,8 @@ class StockMara extends Module
             'name_shop' => pSQL($name_shop),
             'name_product' => pSQL($name_product),
             'quantity' => (int)$quantity,
-            'http_code' => (int)$http_code,
-            'response' => pSQL($truncated_response),
             'date_add' => date('Y-m-d H:i:s')
         );
-
-        if ($status_id !== null) {
-            $data['status_id'] = (int)$status_id;
-        }
 
         Db::getInstance()->insert('stock_webhook_log', $data);
     }
