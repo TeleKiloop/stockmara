@@ -21,6 +21,8 @@ if (!defined('_PS_VERSION_')) {
 
 class StockMara extends Module
 {
+
+   private static $is_updating_internal_stock = false;
     public function __construct()
     {
         $this->name = 'stockmara';
@@ -187,49 +189,131 @@ class StockMara extends Module
         return $helper->generateList($logs ? $logs : array(), $fields_list);
     }
 
-    public function hookActionUpdateQuantity($params)
-    {
-        if (!Configuration::get('STOCK_WEBHOOK_ACTIVE')) {
-            return;
-        }
-
-        if (!isset($params['id_product'])) {
-            return;
-        }
-
-        // 
-        $id_product = (int)$params['id_product'];
-        $id_product_attribute = isset($params['id_product_attribute']) ? (int)$params['id_product_attribute'] : 0;
-        $quantity = (int)$params['quantity'];
-
-        $id_product_final = $id_product ? $id_product : $id_product_attribute;
-
-        $id_lang = (int) Context::getContext()->language->id;
-        $id_shop = (int) Context::getContext()->shop->id;
-        $name_shop = Context::getContext()->shop->name;
-
-        $product_name = "";
-        if ($id_product) {
-            $product = new Product($id_product, false, $id_lang, $id_shop);
-            if (Validate::isLoadedObject($product)) {
-                $product_name = $product->name;
-            }
-        } elseif ($id_product_attribute) {
-            $id_product = (int) Product::getProductIdByAttribute($id_product_attribute);
-
-            if ($id_product > 0) {
-                // 2. Instanciar o produto para obter o nome
-                $product = new Product($id_product, false, $id_lang);
-                
-                if (Validate::isLoadedObject($product)) {
-                    $product_name = $product->name;
-                }
-            }
-        }
-       
-
-        $this->logEvent('stock_quantity_update', $id_product_final, $name_shop, $product_name, $quantity);
+public function hookActionUpdateQuantity($params) {
+    // 1. IMPEDIR A EXECUÇÃO VIA CÓDIGO (Evita loop infinito entre as lojas)
+    if (self::$is_updating_internal_stock) {
+        return;
     }
+
+    if (!Configuration::get('STOCK_WEBHOOK_ACTIVE')) {
+        return;
+    }
+
+    $id_product = isset($params['id_product']) ? (int)$params['id_product'] : 0;
+    $id_product_attribute = isset($params['id_product_attribute']) ? (int)$params['id_product_attribute'] : 0;
+    $quantity = isset($params['quantity']) ? (int)$params['quantity'] : 0;
+
+    if (!$id_product && !$id_product_attribute) {
+        return;
+    }
+
+    // Identificar a loja de origem com segurança a partir dos parâmetros do hook
+    $id_shop = isset($params['id_shop']) ? (int)$params['id_shop'] : (int)Context::getContext()->shop->id;
+    if ($id_shop <= 0) {
+        $id_shop = (int)Configuration::get('PS_SHOP_DEFAULT');
+    }
+
+    $id_lang = (int) Context::getContext()->language->id;
+    
+    // Proteção: Evitar ler propriedades de objetos nulos caso o Contexto falhe no AJAX
+    $context_shop = Context::getContext()->shop;
+    $name_shop = Validate::isLoadedObject($context_shop) ? $context_shop->name : 'Loja ' . $id_shop;
+
+    $product_name = "n-a"; 
+
+    if (!$id_product && $id_product_attribute > 0) {
+        $id_product = (int) Product::getProductIdByAttribute($id_product_attribute);
+    }
+
+    if ($id_product > 0) {
+        $product = new Product($id_product, false, $id_lang, $id_shop);
+        if (Validate::isLoadedObject($product)) {
+            $product_name = $product->name;
+        }
+    }
+
+    // Executa a sincronização forçando o ID da loja detetada
+    $this->atualizarStock($id_product, $id_product_attribute, $id_shop, $quantity);
+
+    if (method_exists($this, 'logEvent')) {
+        $this->logEvent('stock_quantity_update', $id_product, $name_shop, $product_name, $quantity);
+    }
+}
+
+private function atualizarStock($id_product, $id_product_attribute, $id_shop, $quantity)
+{
+    // Se o ID da loja for inválido ou 0 (Todas as Lojas), não espelha
+    if ($id_shop <= 0) {
+        return false;
+    }
+
+    // Inversão matemática simples: se for 1 vai para 2, se for 2 vai para 1. Caso contrário sai.
+    $id_shop_destino = ((int)$id_shop === 1) ? 2 : (((int)$id_shop === 2) ? 1 : 0);
+    
+    if ($id_shop_destino === 0) {
+        return false;
+    }
+
+    // 1. Verifica se o produto existe na BD global
+    if ($id_product > 0 && Product::existsInDatabase((int)$id_product, 'product')) {
+        
+        // Regressamos à tua query original (é a mais segura para o getValue do PrestaShop)
+        $exists_in_dest_shop = Db::getInstance()->getValue(
+            'SELECT id_product FROM '._DB_PREFIX_.'product_shop 
+             WHERE id_product = '.(int)$id_product.' 
+             AND id_shop = '.(int)$id_shop_destino
+        );
+
+        if (!$exists_in_dest_shop) {
+            if (method_exists($this, 'logEvent')) {
+                $this->logEvent('stock_sync_skip', $id_product, 'Aviso', 'Produto não associado à loja ' . $id_shop_destino, 0);
+            }
+            return false; 
+        }
+
+        $nova_quantidade = ($quantity < 0) ? 0 : $quantity;
+
+        try {
+            // Ativar o travão para bloquear chamadas em loop
+            self::$is_updating_internal_stock = true;
+
+            // Descobrir o ID de stock na loja destino
+            $id_stock_available = (int)StockAvailable::getStockAvailableIdByProductId(
+                (int)$id_product, 
+                (int)$id_product_attribute, 
+                (int)$id_shop_destino
+            );
+
+            if ($id_stock_available > 0) {
+                $stockAvailable = new StockAvailable($id_stock_available);
+                $stockAvailable->quantity = (int)$nova_quantidade;
+                $stockAvailable->update();
+            } else {
+                $stockAvailable = new StockAvailable();
+                $stockAvailable->id_product = (int)$id_product;
+                $stockAvailable->id_product_attribute = (int)$id_product_attribute;
+                $stockAvailable->id_shop = (int)$id_shop_destino;
+                $stockAvailable->id_shop_group = 0; 
+                $stockAvailable->quantity = (int)$nova_quantidade;
+                $stockAvailable->add();
+            }
+            
+        } catch (\Exception $e) {
+            if (method_exists($this, 'logEvent')) {
+                $this->logEvent('stock_sync_error', $id_product, 'Erro', $e->getMessage(), 0);
+            }
+            return false;
+        } finally {
+            // Desativar o travão SEMPRE
+            self::$is_updating_internal_stock = false;
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
+
 
     private function logEvent($event, $id_product, $name_shop, $name_product, $quantity)
     {
