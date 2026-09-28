@@ -67,8 +67,6 @@ class StockMara extends Module
             `name_product` VARCHAR(50) DEFAULT NULL,
             `quantity` INT(11) DEFAULT NULL,
             `status_id` INT(11) DEFAULT NULL,
-            `http_code` INT(5) DEFAULT NULL,
-            `response` VARCHAR(255) DEFAULT NULL,
             `date_add` DATETIME NOT NULL,
             PRIMARY KEY (`id_log`)
         ) ENGINE=" . _MYSQL_ENGINE_ . " DEFAULT CHARSET=utf8;";
@@ -231,31 +229,6 @@ class StockMara extends Module
        
 
         $this->logEvent('stock_quantity_update', $id_product_final, $name_shop, $product_name, $quantity);
-    }
-
-    private function sendWebhook($data)
-    {
-        $api_url = Configuration::get('STOCK_WEBHOOK_API_URL');
-        $secret_key = Configuration::get('STOCK_WEBHOOK_SECRET');
-        $json_data = json_encode($data);
-
-        $ch = curl_init($api_url);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-            'Content-Type: application/json',
-            'Content-Length: ' . strlen($json_data),
-            'X-PrestaShop-Secret-Key: ' . $secret_key
-        ));
-
-        $result = curl_exec($ch);
-        $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        return array('code' => $http_code, 'body' => $result ? $result : '');
     }
 
     private function logEvent($event, $id_product, $name_shop, $name_product, $quantity)
