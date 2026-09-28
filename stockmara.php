@@ -216,7 +216,7 @@ class StockMara extends Module
             'timestamp' => date('Y-m-d H:i:s')
         );
 
-        //$response = $this->sendWebhook($payload);
+       
 
         $this->logEvent('stock_quantity_update', $id_product_final, $this->context->shop->name, $response['name_product'], $quantity, null, $response['code'], $response['body']);
     }
