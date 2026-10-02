@@ -27,7 +27,7 @@ class StockMara extends Module
     {
         $this->name = 'stockmara';
         $this->tab = 'administration';
-        $this->version = '1.2.2';
+        $this->version = '1.3.0';
         $this->author = 'Winespiritus';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -35,7 +35,7 @@ class StockMara extends Module
         parent::__construct();
 
         $this->displayName = $this->l('StockMara');
-        $this->description = $this->l('Gestão e registo de envios de stock para a Intranet via Webhook (PS 1.7.6.2).');
+        $this->description = $this->l('Gestão e registo de envios de stock (PS 1.7.6.2).');
         
         $this->ps_versions_compliancy = array('min' => '1.7.6.0', 'max' => '1.7.6.9');
     }
@@ -45,8 +45,6 @@ class StockMara extends Module
         return parent::install() &&
             $this->createTables() &&
             Configuration::updateValue('STOCK_WEBHOOK_ACTIVE', 1) &&
-            Configuration::updateValue('STOCK_WEBHOOK_API_URL', 'https://intranet.tuaempresa.com/api/stock-webhook') &&
-            Configuration::updateValue('STOCK_WEBHOOK_SECRET', Tools::passwdGen(32)) &&
             $this->registerHook('actionUpdateQuantity');
     }
 
@@ -54,9 +52,7 @@ class StockMara extends Module
     {
         return parent::uninstall() &&
             $this->deleteTables() &&
-            Configuration::deleteByName('STOCK_WEBHOOK_ACTIVE') &&
-            Configuration::deleteByName('STOCK_WEBHOOK_API_URL') &&
-            Configuration::deleteByName('STOCK_WEBHOOK_SECRET');
+            Configuration::deleteByName('STOCK_WEBHOOK_ACTIVE');
     }
 
     private function createTables()
@@ -88,18 +84,9 @@ class StockMara extends Module
         // Corrigido: captura de dados quando o formulário é submetido
         if (Tools::isSubmit('submitStockMaraConfig')) {
             $active = (int)Tools::getValue('STOCK_WEBHOOK_ACTIVE');
-            $api_url = trim(Tools::getValue('STOCK_WEBHOOK_API_URL'));
-            $secret = trim(Tools::getValue('STOCK_WEBHOOK_SECRET'));
 
-            if (empty($api_url) || !Validate::isUrl($api_url)) {
-                $output .= $this->displayError($this->l('Por favor introduza um URL válido.'));
-            } else {
-                Configuration::updateValue('STOCK_WEBHOOK_ACTIVE', $active);
-                Configuration::updateValue('STOCK_WEBHOOK_API_URL', $api_url);
-                Configuration::updateValue('STOCK_WEBHOOK_SECRET', $secret);
-
-                $output .= $this->displayConfirmation($this->l('✅ Alterações guardadas com sucesso!'));
-            }
+            Configuration::updateValue('STOCK_WEBHOOK_ACTIVE', $active);
+            $output .= $this->displayConfirmation($this->l('✅ Alterações guardadas com sucesso!'));
         }
 
         return $output . $this->renderForm() . $this->renderLogList();
@@ -123,19 +110,7 @@ class StockMara extends Module
                             array('id' => 'active_on', 'value' => 1, 'label' => $this->l('Sim')),
                             array('id' => 'active_off', 'value' => 0, 'label' => $this->l('Não'))
                         ),
-                    ),
-                    array(
-                        'type' => 'text',
-                        'label' => $this->l('URL da API'),
-                        'name' => 'STOCK_WEBHOOK_API_URL',
-                        'required' => true,
-                    ),
-                    array(
-                        'type' => 'text',
-                        'label' => $this->l('Chave Secreta (X-PrestaShop-Secret-Key)'),
-                        'name' => 'STOCK_WEBHOOK_SECRET',
-                        'required' => true,
-                    ),
+                    )
                 ),
                 'submit' => array(
                     'title' => $this->l('Guardar'),
@@ -154,8 +129,6 @@ class StockMara extends Module
         $helper->submit_action = 'submitStockMaraConfig'; // CORRIGIDO: Ação explícita do formulário
 
         $helper->fields_value['STOCK_WEBHOOK_ACTIVE'] = Configuration::get('STOCK_WEBHOOK_ACTIVE');
-        $helper->fields_value['STOCK_WEBHOOK_API_URL'] = Configuration::get('STOCK_WEBHOOK_API_URL');
-        $helper->fields_value['STOCK_WEBHOOK_SECRET'] = Configuration::get('STOCK_WEBHOOK_SECRET');
 
         return $helper->generateForm(array($fields_form));
     }
